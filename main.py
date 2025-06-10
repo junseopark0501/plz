@@ -58,22 +58,28 @@ if st.button(f"{stock_ticker} 주식 가격 불러오기"):
     if not stock_data.empty:
         st.subheader(f"{stock_ticker} 주가 차트")
         fig_stock = go.Figure(data=[go.Candlestick(x=stock_data.index,
-                                                    open=stock_data['Open'],
-                                                    high=stock_data['High'],
-                                                    low=stock_data['Low'],
-                                                    close=stock_data['Close'])])
+                                                     open=stock_data['Open'],
+                                                     high=stock_data['High'],
+                                                     low=stock_data['Low'],
+                                                     close=stock_data['Close'])])
         fig_stock.update_layout(xaxis_rangeslider_visible=False)
         st.plotly_chart(fig_stock, use_container_width=True)
 
         st.subheader(f"{stock_ticker} 현재 가격")
-        if 'Close' in stock_data.columns and not stock_data['Close'].empty:
+        if not stock_data['Close'].empty: # 'Close' 컬럼이 비어있지 않은지 확인
             current_price = stock_data['Close'].iloc[-1]
-            st.metric(label=f"{stock_ticker} 현재 가격", value=f"${current_price:,.2f}")
+            # current_price가 숫자인지 한 번 더 명시적으로 확인
+            if pd.isna(current_price): # NaN 값인지 확인
+                st.info(f"{stock_ticker} 현재 가격 정보를 가져올 수 없습니다 (데이터 유효성 문제).")
+            elif not isinstance(current_price, (int, float)): # 숫자가 아닌지 확인
+                st.info(f"{stock_ticker} 현재 가격 데이터 타입이 올바르지 않습니다: {type(current_price)}")
+            else:
+                st.metric(label=f"{stock_ticker} 현재 가격", value=f"${current_price:,.2f}")
         else:
-            st.info("현재 가격 정보를 가져올 수 없습니다.")
-
+            st.info("현재 가격 정보를 가져올 수 없습니다. (데이터 부족 또는 오류)") # 기존 메시지 변경
     else:
         st.info("주식 데이터를 가져올 수 없습니다. 티커와 기간을 확인해주세요.")
+
 
 # --- 암호화폐 섹션 ---
 st.sidebar.subheader("암호화폐 설정")
@@ -96,11 +102,19 @@ if st.button(f"{crypto_symbol} 암호화폐 가격 불러오기"):
         st.plotly_chart(fig_crypto, use_container_width=True)
 
         st.subheader(f"{crypto_symbol} 현재 가격")
-        if 'close' in crypto_data.columns and not crypto_data['close'].empty:
+        # --- 암호화폐 섹션 수정 시작 ---
+        if not crypto_data['close'].empty: # 'close' 컬럼이 비어있지 않은지 확인
             current_crypto_price = crypto_data['close'].iloc[-1]
-            st.metric(label=f"{crypto_symbol} 현재 가격", value=f"${current_crypto_price:,.2f}")
+            # current_crypto_price가 숫자인지 한 번 더 명시적으로 확인
+            if pd.isna(current_crypto_price): # NaN 값인지 확인
+                st.info(f"{crypto_symbol} 현재 가격 정보를 가져올 수 없습니다 (데이터 유효성 문제).")
+            elif not isinstance(current_crypto_price, (int, float)): # 숫자가 아닌지 확인
+                st.info(f"{crypto_symbol} 현재 가격 데이터 타입이 올바르지 않습니다: {type(current_crypto_price)}")
+            else:
+                st.metric(label=f"{crypto_symbol} 현재 가격", value=f"${current_crypto_price:,.2f}")
         else:
-            st.info("현재 가격 정보를 가져올 수 없습니다.")
+            st.info("현재 가격 정보를 가져올 수 없습니다. (데이터 부족 또는 오류)")
+        # --- 암호화폐 섹션 수정 끝 ---
     else:
         st.info("암호화폐 데이터를 가져올 수 없습니다. 심볼과 거래소를 확인해주세요.")
 
