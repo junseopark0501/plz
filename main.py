@@ -132,3 +132,7 @@ if auto_refresh:
 # --- 푸터 ---
 st.markdown("---")
 st.markdown("개발자: [당신의 GitHub 프로필 링크] | 데이터 출처: yfinance, CCXT")
+
+git add app.py
+git commit -m "Apply error handling for st.metric in crypto section"
+git push origin main # 또는 master
