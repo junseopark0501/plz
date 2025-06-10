@@ -21,7 +21,12 @@ st.sidebar.header("설정")
 def get_stock_data(ticker, period="1d", interval="1m"):
     try:
         data = yf.download(ticker, period=period, interval=interval)
-        return data
+        # Ensure data is not empty and has required columns
+        if not data.empty and all(col in data.columns for col in ['Open', 'High', 'Low', 'Close']):
+            return data
+        else:
+            st.sidebar.warning(f"yfinance로 {ticker} 데이터를 가져왔으나, 필수 컬럼(Open, High, Low, Close)이 없거나 데이터가 비어 있습니다.")
+            return pd.DataFrame()
     except Exception as e:
         st.sidebar.error(f"주식 데이터를 가져오는 데 실패했습니다: {e}")
         return pd.DataFrame()
@@ -34,7 +39,12 @@ def get_crypto_data(symbol, exchange_id='binance'):
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
-        return df
+        # Ensure data is not empty and has required columns
+        if not df.empty and all(col in df.columns for col in ['open', 'high', 'low', 'close']):
+            return df
+        else:
+            st.sidebar.warning(f"ccxt로 {symbol} 데이터를 가져왔으나, 필수 컬럼(open, high, low, close)이 없거나 데이터가 비어 있습니다.")
+            return pd.DataFrame()
     except Exception as e:
         st.sidebar.error(f"암호화폐 데이터를 가져오는 데 실패했습니다: {e}")
         return pd.DataFrame()
@@ -55,8 +65,9 @@ if st.button(f"{stock_ticker} 주식 가격 불러오기"):
 
     stock_data = get_stock_data(stock_ticker, period=stock_period, interval=stock_interval)
 
+    # --- 주식 차트 그리기 ---
+    st.subheader(f"{stock_ticker} 주가 차트")
     if not stock_data.empty:
-        st.subheader(f"{stock_ticker} 주가 차트")
         fig_stock = go.Figure(data=[go.Candlestick(x=stock_data.index,
                                                      open=stock_data['Open'],
                                                      high=stock_data['High'],
@@ -64,21 +75,38 @@ if st.button(f"{stock_ticker} 주식 가격 불러오기"):
                                                      close=stock_data['Close'])])
         fig_stock.update_layout(xaxis_rangeslider_visible=False)
         st.plotly_chart(fig_stock, use_container_width=True)
-
-        st.subheader(f"{stock_ticker} 현재 가격")
-        if not stock_data['Close'].empty: # 'Close' 컬럼이 비어있지 않은지 확인
-            current_price = stock_data['Close'].iloc[-1]
-            # current_price가 숫자인지 한 번 더 명시적으로 확인
-            if pd.isna(current_price): # NaN 값인지 확인
-                st.info(f"{stock_ticker} 현재 가격 정보를 가져올 수 없습니다 (데이터 유효성 문제).")
-            elif not isinstance(current_price, (int, float)): # 숫자가 아닌지 확인
-                st.info(f"{stock_ticker} 현재 가격 데이터 타입이 올바르지 않습니다: {type(current_price)}")
-            else:
-                st.metric(label=f"{stock_ticker} 현재 가격", value=f"${current_price:,.2f}")
-        else:
-            st.info("현재 가격 정보를 가져올 수 없습니다. (데이터 부족 또는 오류)") # 기존 메시지 변경
     else:
-        st.info("주식 데이터를 가져올 수 없습니다. 티커와 기간을 확인해주세요.")
+        st.info("주식 데이터를 가져오지 못했습니다. 임시 차트를 표시합니다.")
+        # 임시 데이터로 차트 생성 (앱이 깨지지 않게)
+        dummy_data = pd.DataFrame({
+            'Open': [100, 102, 101, 103, 102],
+            'High': [103, 104, 103, 105, 104],
+            'Low': [99, 100, 99, 101, 100],
+            'Close': [102, 101, 102, 102, 103]
+        }, index=pd.to_datetime(['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05']))
+        fig_stock_dummy = go.Figure(data=[go.Candlestick(x=dummy_data.index,
+                                                      open=dummy_data['Open'],
+                                                      high=dummy_data['High'],
+                                                      low=dummy_data['Low'],
+                                                      close=dummy_data['Close'])])
+        fig_stock_dummy.update_layout(xaxis_rangeslider_visible=False, title="데이터 없음 (임시 차트)")
+        st.plotly_chart(fig_stock_dummy, use_container_width=True)
+
+
+    # --- 주식 현재 가격 표시 (강력한 오류 방지 로직) ---
+    st.subheader(f"{stock_ticker} 현재 가격")
+    current_price = None # 초기값 설정
+    if not stock_data.empty and 'Close' in stock_data.columns and not stock_data['Close'].empty:
+        # 마지막 유효한 숫자 값 찾기
+        valid_prices = stock_data['Close'].dropna()
+        if not valid_prices.empty:
+            current_price = valid_prices.iloc[-1]
+
+    if isinstance(current_price, (int, float)): # 숫자인 경우에만 포맷팅
+        st.metric(label=f"{stock_ticker} 현재 가격", value=f"${current_price:,.2f}")
+    else:
+        st.info(f"{stock_ticker} 현재 가격 정보를 가져올 수 없습니다. (가격 데이터 유효성 문제)")
+        st.metric(label=f"{stock_ticker} 현재 가격", value="N/A") # 오류 시 'N/A' 표시
 
 
 # --- 암호화폐 섹션 ---
@@ -91,8 +119,9 @@ st.header("암호화폐 시장")
 if st.button(f"{crypto_symbol} 암호화폐 가격 불러오기"):
     crypto_data = get_crypto_data(crypto_symbol, exchange_id=selected_exchange)
 
+    # --- 암호화폐 차트 그리기 ---
+    st.subheader(f"{crypto_symbol} 가격 차트 ({selected_exchange})")
     if not crypto_data.empty:
-        st.subheader(f"{crypto_symbol} 가격 차트 ({selected_exchange})")
         fig_crypto = go.Figure(data=[go.Candlestick(x=crypto_data.index,
                                                      open=crypto_data['open'],
                                                      high=crypto_data['high'],
@@ -100,23 +129,39 @@ if st.button(f"{crypto_symbol} 암호화폐 가격 불러오기"):
                                                      close=crypto_data['close'])])
         fig_crypto.update_layout(xaxis_rangeslider_visible=False)
         st.plotly_chart(fig_crypto, use_container_width=True)
-
-        st.subheader(f"{crypto_symbol} 현재 가격")
-        # --- 암호화폐 섹션 수정 시작 ---
-        if not crypto_data['close'].empty: # 'close' 컬럼이 비어있지 않은지 확인
-            current_crypto_price = crypto_data['close'].iloc[-1]
-            # current_crypto_price가 숫자인지 한 번 더 명시적으로 확인
-            if pd.isna(current_crypto_price): # NaN 값인지 확인
-                st.info(f"{crypto_symbol} 현재 가격 정보를 가져올 수 없습니다 (데이터 유효성 문제).")
-            elif not isinstance(current_crypto_price, (int, float)): # 숫자가 아닌지 확인
-                st.info(f"{crypto_symbol} 현재 가격 데이터 타입이 올바르지 않습니다: {type(current_crypto_price)}")
-            else:
-                st.metric(label=f"{crypto_symbol} 현재 가격", value=f"${current_crypto_price:,.2f}")
-        else:
-            st.info("현재 가격 정보를 가져올 수 없습니다. (데이터 부족 또는 오류)")
-        # --- 암호화폐 섹션 수정 끝 ---
     else:
-        st.info("암호화폐 데이터를 가져올 수 없습니다. 심볼과 거래소를 확인해주세요.")
+        st.info("암호화폐 데이터를 가져오지 못했습니다. 임시 차트를 표시합니다.")
+        # 임시 데이터로 차트 생성 (앱이 깨지지 않게)
+        dummy_data_crypto = pd.DataFrame({
+            'open': [30000, 30500, 30200, 30800, 30600],
+            'high': [30600, 30800, 30500, 31000, 30900],
+            'low': [29800, 30200, 30000, 30400, 30500],
+            'close': [30500, 30200, 30400, 30600, 30800]
+        }, index=pd.to_datetime(['2024-01-01 00:00', '2024-01-01 01:00', '2024-01-01 02:00', '2024-01-01 03:00', '2024-01-01 04:00']))
+        fig_crypto_dummy = go.Figure(data=[go.Candlestick(x=dummy_data_crypto.index,
+                                                           open=dummy_data_crypto['open'],
+                                                           high=dummy_data_crypto['high'],
+                                                           low=dummy_data_crypto['low'],
+                                                           close=dummy_data_crypto['close'])])
+        fig_crypto_dummy.update_layout(xaxis_rangeslider_visible=False, title="데이터 없음 (임시 차트)")
+        st.plotly_chart(fig_crypto_dummy, use_container_width=True)
+
+
+    # --- 암호화폐 현재 가격 표시 (강력한 오류 방지 로직) ---
+    st.subheader(f"{crypto_symbol} 현재 가격")
+    current_crypto_price = None # 초기값 설정
+    if not crypto_data.empty and 'close' in crypto_data.columns and not crypto_data['close'].empty:
+        # 마지막 유효한 숫자 값 찾기
+        valid_crypto_prices = crypto_data['close'].dropna()
+        if not valid_crypto_prices.empty:
+            current_crypto_price = valid_crypto_prices.iloc[-1]
+
+    if isinstance(current_crypto_price, (int, float)): # 숫자인 경우에만 포맷팅
+        st.metric(label=f"{crypto_symbol} 현재 가격", value=f"${current_crypto_price:,.2f}")
+    else:
+        st.info(f"{crypto_symbol} 현재 가격 정보를 가져올 수 없습니다. (가격 데이터 유효성 문제)")
+        st.metric(label=f"{crypto_symbol} 현재 가격", value="N/A") # 오류 시 'N/A' 표시
+
 
 # --- 자동 새로고침 (선택 사항) ---
 st.sidebar.markdown("---")
@@ -126,13 +171,12 @@ refresh_interval = st.sidebar.slider("새로고침 간격 (초)", 30, 300, 60, 3
 
 if auto_refresh:
     st.info(f"데이터가 {refresh_interval}초마다 자동으로 새로고침됩니다.")
-    st.rerun() # Streamlit 앱을 새로고침하여 데이터를 다시 가져옴
-    time.sleep(refresh_interval) # 다음 새로고침까지 대기
+    # st.rerun() 대신 time.sleep을 사용하면 Streamlit Cloud에서 특정 조건에서
+    # 무한 루프처럼 동작할 수 있으므로, 실제 운영 환경에서는 주의해야 합니다.
+    # 단순 시연 목적이라면 괜찮지만, 실제 앱에서는 다른 자동 새로고침 메커니즘을 고려할 수 있습니다.
+    time.sleep(refresh_interval)
+    st.rerun() # time.sleep 후 rerun을 호출하여 다음 턴에 다시 실행되도록 함
 
 # --- 푸터 ---
 st.markdown("---")
 st.markdown("개발자: [당신의 GitHub 프로필 링크] | 데이터 출처: yfinance, CCXT")
-
-git add app.py
-git commit -m "Apply error handling for st.metric in crypto section"
-git push origin main # 또는 master
